@@ -1,0 +1,64 @@
+# Override values for the production environment.
+# Usage: helm install api charts/api -f charts/api/values.yaml -f charts/api/values-production.yaml
+
+replicaCount: 3
+
+image:
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 65
+  targetMemoryUtilizationPercentage: 75
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+ingress:
+  enabled: true
+  className: "alb"
+  host: api.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:eu-west-2:123456789012:certificate/production-cert-id"
+  tls:
+    enabled: false
+    acmCertificateArn: "arn:aws:acm:eu-west-2:123456789012:certificate/production-cert-id"
+
+config:
+  DJANGO_SETTINGS_MODULE: "config.settings.production"
+  ALLOWED_HOSTS: "api.example.com"
+  DJANGO_LOG_LEVEL: "WARNING"
+  PROMETHEUS_METRICS_ENABLED: "true"
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - api
+          topologyKey: kubernetes.io/hostname
+
+serviceMonitor:
+  enabled: true

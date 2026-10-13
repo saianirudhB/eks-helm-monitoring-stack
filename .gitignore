@@ -1,0 +1,31 @@
+# Helm
+*.tgz
+charts/**/charts/*.tgz
+charts/**/Chart.lock
+
+# Kubeconfig / cloud credentials — never commit these
+kubeconfig
+kubeconfig.yaml
+*.kubeconfig
+.kube/
+.aws/
+*.pem
+*.key
+
+# Local env / secret overrides
+.env
+.env.*
+secrets.yaml
+values-local.yaml
+values-*.local.yaml
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Terraform state (in case infra is added later)
+*.tfstate
+*.tfstate.*
+.terraform/

@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "api.fullname" . }}-test-connection"
+  labels:
+    {{- include "api.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
+spec:
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: curl
+      image: curlimages/curl:8.10.1
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      command:
+        - sh
+        - -c
+        - |
+          set -eu
+          echo "Checking http://{{ include "api.fullname" . }}:{{ .Values.service.port }}{{ .Values.probes.readiness.path }}"
+          curl --fail --silent --show-error --max-time 10 \
+            "http://{{ include "api.fullname" . }}:{{ .Values.service.port }}{{ .Values.probes.readiness.path }}"
+  restartPolicy: Never

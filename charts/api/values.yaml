@@ -1,0 +1,154 @@
+# Default values for the api chart.
+# This is a YAML-formatted file.
+# These are merged with (and overridden by) values-staging.yaml / values-production.yaml
+# at install/upgrade time via `-f`.
+
+replicaCount: 2
+
+image:
+  # Image is expected to live in an AWS ECR repository, e.g.:
+  # 123456789012.dkr.ecr.eu-west-2.amazonaws.com/credit-strategy-api
+  repository: 123456789012.dkr.ecr.eu-west-2.amazonaws.com/credit-strategy-api
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+  # - name: ecr-registry-credentials
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account (e.g. IRSA role ARN for AWS IAM integration)
+  annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/api-service-account-role
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+  # prometheus.io/scrape: "true"
+  # prometheus.io/port: "8000"
+  # prometheus.io/path: "/metrics"
+
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+  host: api.example.com
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: true
+    secretName: api-tls-cert
+    # When className is "alb" the ALB terminates TLS via ACM instead of a k8s TLS secret.
+    # Set tls.enabled: false and use the annotation below for ACM-based ALB TLS termination.
+    acmCertificateArn: ""
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-2:123456789012:certificate/xxxx
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Probe configuration — the Django API is expected to expose a lightweight
+# unauthenticated /healthz endpoint (e.g. via django-health-check or a custom view).
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+# Non-sensitive configuration, rendered into a ConfigMap and loaded via envFrom.
+config:
+  DJANGO_SETTINGS_MODULE: "config.settings.production"
+  ALLOWED_HOSTS: "api.example.com"
+  DJANGO_LOG_LEVEL: "INFO"
+  PROMETHEUS_METRICS_ENABLED: "true"
+
+# Secret values. DO NOT put real secret material in version control.
+# At install time, override these with --set / --set-string, e.g.:
+#   helm install api charts/api \
+#     --set secrets.DJANGO_SECRET_KEY="$(openssl rand -hex 32)" \
+#     --set secrets.DATABASE_URL="postgres://user:pass@host:5432/db"
+# ...or, preferably, manage this Secret externally (AWS Secrets Manager + External
+# Secrets Operator / Secrets Store CSI Driver) and set secrets.create: false below
+# so this chart does not own the Secret object at all.
+secrets:
+  # When true, templates/secret.yaml renders a Secret from the values below.
+  # When false, it is assumed a Secret with name secrets.externalSecretName
+  # already exists in the namespace (created by an external secret manager).
+  create: true
+  externalSecretName: ""
+  # Placeholders only — always override at install time, never commit real values.
+  DJANGO_SECRET_KEY: "CHANGEME-override-with---set-at-install-time"
+  DATABASE_URL: "CHANGEME-override-with---set-at-install-time"
+
+extraEnv: []
+  # - name: AWS_DEFAULT_REGION
+  #   value: eu-west-2
+
+serviceMonitor:
+  # Requires the Prometheus Operator CRDs (installed by kube-prometheus-stack).
+  enabled: true
+  interval: 30s
+  path: /metrics
+  labels: {}

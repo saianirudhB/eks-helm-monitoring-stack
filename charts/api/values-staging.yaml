@@ -1,0 +1,47 @@
+# Override values for the staging environment.
+# Usage: helm install api charts/api -f charts/api/values.yaml -f charts/api/values-staging.yaml
+
+replicaCount: 1
+
+image:
+  tag: "staging"
+  pullPolicy: Always
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: "alb"
+  host: api-staging.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+  tls:
+    enabled: false
+    acmCertificateArn: "arn:aws:acm:eu-west-2:123456789012:certificate/staging-cert-id"
+
+config:
+  DJANGO_SETTINGS_MODULE: "config.settings.staging"
+  ALLOWED_HOSTS: "api-staging.example.com"
+  DJANGO_LOG_LEVEL: "DEBUG"
+  PROMETHEUS_METRICS_ENABLED: "true"
+
+serviceMonitor:
+  enabled: true

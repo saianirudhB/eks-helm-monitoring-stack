@@ -1,0 +1,166 @@
+# Values override for the community "kube-prometheus-stack" Helm chart
+# (Prometheus Operator + Prometheus + Alertmanager + Grafana + node-exporter +
+# kube-state-metrics), used to monitor the EKS cluster and the `api` workload
+# deployed by charts/api.
+#
+# Install with:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring --create-namespace \
+#     -f monitoring/kube-prometheus-stack-values.yaml
+
+fullnameOverride: kube-prometheus-stack
+
+# ----------------------------------------------------------------------------
+# Prometheus
+# ----------------------------------------------------------------------------
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    retentionSize: "45GB"
+
+    # Discover ServiceMonitors / PodMonitors / PrometheusRules across all
+    # namespaces rather than only ones with special labels — simplest setup
+    # for a single-cluster, single-team portfolio project.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    resources:
+      requests:
+        cpu: 250m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+
+    podAntiAffinity: soft
+
+  # Ingress for the Prometheus UI itself is left disabled by default; teams
+  # typically reach Prometheus via `kubectl port-forward` or keep it internal
+  # and only expose Grafana externally. Flip to true + configure like the
+  # Grafana ingress below if you need external access.
+  ingress:
+    enabled: false
+
+# ----------------------------------------------------------------------------
+# Alertmanager
+# ----------------------------------------------------------------------------
+alertmanager:
+  alertmanagerSpec:
+    retention: 120h
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+
+  # See monitoring/alerts/alertmanager-config.yaml for the actual routing
+  # config (Slack for critical, email for warning). It is applied as a
+  # separate Secret/AlertmanagerConfig rather than inlined here so it can be
+  # reviewed, diffed and rotated independently of the chart upgrade.
+  ingress:
+    enabled: false
+
+# ----------------------------------------------------------------------------
+# Grafana
+# ----------------------------------------------------------------------------
+grafana:
+  enabled: true
+
+  # Change this at install time:
+  #   --set grafana.adminPassword=... (or better: grafana.admin.existingSecret)
+  adminPassword: "CHANGEME-override-at-install-time"
+
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    accessModes: ["ReadWriteOnce"]
+    size: 10Gi
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+    hosts:
+      - grafana.example.com
+    path: /
+    tls: []
+    # When using an ALB with ACM, TLS is terminated at the ALB via the
+    # certificate-arn annotation instead of a k8s TLS secret — add:
+    #   alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-2:123456789012:certificate/xxxx
+
+  # Auto-provision the two dashboards shipped in monitoring/dashboards/ via
+  # the sidecar, which watches ConfigMaps labelled grafana_dashboard: "1".
+  # Load them into the cluster with, e.g.:
+  #   kubectl create configmap pod-node-dashboard \
+  #     --from-file=monitoring/dashboards/pod-node-metrics.json \
+  #     -n monitoring
+  #   kubectl label configmap pod-node-dashboard grafana_dashboard=1 -n monitoring
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: false
+
+  # Prometheus is auto-added as a datasource by this chart via
+  # defaultDatasourceEnabled; left at its default (true) here for clarity.
+  defaultDatasourceEnabled: true
+
+  grafana.ini:
+    server:
+      root_url: "https://grafana.example.com"
+    auth:
+      disable_login_form: false
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+
+# ----------------------------------------------------------------------------
+# node-exporter / kube-state-metrics (left at chart defaults — both are
+# required for the Pod & Node Metrics dashboard and the CPU/memory alerts)
+# ----------------------------------------------------------------------------
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+# Default component scrape configs (kube-apiserver, kubelet, coredns, etc.)
+# left enabled at chart defaults for a standard EKS cluster.

@@ -1,0 +1,85 @@
+name: Helm Chart CI
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - ".github/workflows/helm-ci.yml"
+
+jobs:
+  lint-and-validate:
+    name: Lint, template & schema-validate charts/api
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.16.2"
+
+      - name: helm lint (default values)
+        run: helm lint charts/api
+
+      - name: helm lint (staging values)
+        run: helm lint charts/api -f charts/api/values-staging.yaml
+
+      - name: helm lint (production values)
+        run: helm lint charts/api -f charts/api/values-production.yaml
+
+      - name: helm template (default values)
+        run: helm template api charts/api > /tmp/rendered-default.yaml
+
+      - name: helm template (staging values)
+        run: |
+          helm template api charts/api \
+            -f charts/api/values-staging.yaml > /tmp/rendered-staging.yaml
+
+      - name: helm template (production values)
+        run: |
+          helm template api charts/api \
+            -f charts/api/values-production.yaml > /tmp/rendered-production.yaml
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL -o kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xzf kubeconform.tar.gz kubeconform
+          chmod +x kubeconform
+          sudo mv kubeconform /usr/local/bin/kubeconform
+
+      - name: Validate rendered manifests against Kubernetes schemas
+        run: |
+          # ServiceMonitor/PrometheusRule are Prometheus Operator CRDs, not core
+          # Kubernetes types, so they are skipped from the core-schema check here.
+          for f in /tmp/rendered-default.yaml /tmp/rendered-staging.yaml /tmp/rendered-production.yaml; do
+            echo "=== Validating $f ==="
+            kubeconform \
+              -strict \
+              -summary \
+              -skip ServiceMonitor,PrometheusRule \
+              -kubernetes-version 1.29.0 \
+              "$f"
+          done
+
+      - name: Validate ServiceMonitor/PrometheusRule CRDs against the Prometheus Operator schema
+        run: |
+          kubeconform \
+            -strict \
+            -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/rendered-default.yaml \
+            monitoring/alerts/prometheus-rules.yaml
+
+      # Note: `helm install --dry-run` (even --dry-run=client in older Helm
+      # versions) still requires a reachable Kubernetes API server, which
+      # this workflow intentionally does not provision — `helm template` +
+      # `helm lint` + kubeconform above already fully validate the rendered
+      # output without touching any cluster.

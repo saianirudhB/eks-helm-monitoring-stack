@@ -1,0 +1,26 @@
+apiVersion: v2
+name: api
+description: Helm chart for deploying the containerized Django API to Kubernetes (AWS EKS)
+type: application
+
+# This is the chart version. Bump it whenever you change templates/values structure.
+version: 0.1.0
+
+# This is the version number of the application being deployed (the Django API image tag default).
+# Bump this whenever you release a new version of the app itself.
+appVersion: "1.0.0"
+
+keywords:
+  - api
+  - django
+  - eks
+  - kubernetes
+  - rest-api
+
+home: https://github.com/saianirudhboorla/eks-helm-monitoring-stack
+sources:
+  - https://github.com/saianirudhboorla/eks-helm-monitoring-stack
+
+maintainers:
+  - name: Sai Anirudh Boorla
+    email: saianirudhboorla2001@gmail.com

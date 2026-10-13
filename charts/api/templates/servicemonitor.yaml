@@ -1,0 +1,25 @@
+{{/*
+Requires the Prometheus Operator CRDs (installed as part of the
+kube-prometheus-stack chart under monitoring/). Prometheus will auto-discover
+this ServiceMonitor if it is deployed in (or its serviceMonitorSelector
+matches) the same scope as the kube-prometheus-stack release.
+*/}}
+{{- if .Values.serviceMonitor.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "api.fullname" . }}
+  labels:
+    {{- include "api.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "api.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: {{ .Values.serviceMonitor.path }}
+      interval: {{ .Values.serviceMonitor.interval }}
+{{- end }}
